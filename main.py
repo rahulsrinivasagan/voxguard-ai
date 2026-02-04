@@ -5,21 +5,30 @@ import librosa
 import numpy as np
 import io
 import whisper
+import os
 
-# =====================================
+# =========================
 # APPLICATION SETUP
-# =====================================
+# =========================
 app = FastAPI(title="VoxGuard AI – Voice Authenticity Checker")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 API_KEY = "my_secret_key_123"
 
-# =====================================
-# SPEECH MODEL SETUP
-# =====================================
-whisper_model = whisper.load_model("tiny")
+# Reduce thread usage (important for Render)
+os.environ["OMP_NUM_THREADS"] = "1"
 
+# =========================
+# WHISPER LAZY LOADING
+# =========================
+whisper_model = None
+
+def get_whisper_model():
+    global whisper_model
+    if whisper_model is None:
+        whisper_model = whisper.load_model("tiny")
+    return whisper_model
 
 LANGUAGE_LABELS = {
     "en": "English",
@@ -29,46 +38,40 @@ LANGUAGE_LABELS = {
     "ml": "Malayalam"
 }
 
-# =====================================
+# =========================
 # ROOT ROUTE
-# =====================================
+# =========================
 @app.get("/")
 def home():
     return RedirectResponse(url="/ui")
 
-# =====================================
+# =========================
 # LANGUAGE IDENTIFICATION
-# =====================================
+# =========================
 def identify_language(audio, sample_rate):
-    """
-    Identifies spoken language using Whisper transcription.
-    This approach is accurate and stable for real-world speech.
-    """
     try:
         if sample_rate != 16000:
             audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
 
-        transcription = speech_model.transcribe(
+        model = get_whisper_model()
+
+        result = model.transcribe(
             audio,
             task="transcribe",
             fp16=False
         )
 
-        language_code = transcription.get("language")
-        return LANGUAGE_LABELS.get(language_code, "Unknown")
+        lang_code = result.get("language")
+        return LANGUAGE_LABELS.get(lang_code, "Unknown")
 
-    except Exception:
+    except Exception as e:
+        print("Language detection error:", e)
         return "Unknown"
 
-# =====================================
+# =========================
 # VOICE AUTHENTICITY ANALYSIS
-# =====================================
+# =========================
 def analyze_voice_nature(audio, sample_rate):
-    """
-    Determines whether a voice sounds natural or synthetic.
-    Uses conservative heuristics to avoid false positives.
-    """
-
     spectral_smoothness = float(
         np.mean(librosa.feature.spectral_flatness(y=audio))
     )
@@ -99,9 +102,9 @@ def analyze_voice_nature(audio, sample_rate):
 
     return min(score, 1.0)
 
-# =====================================
+# =========================
 # USER INTERFACE
-# =====================================
+# =========================
 @app.get("/ui", response_class=HTMLResponse)
 def user_interface():
     return """
@@ -122,7 +125,6 @@ def user_interface():
             justify-content: center;
             align-items: center;
         }
-
         .overlay {
             background: rgba(0, 0, 0, 0.6);
             width: 100%;
@@ -131,7 +133,6 @@ def user_interface():
             justify-content: center;
             align-items: center;
         }
-
         .card {
             background: rgba(255, 255, 255, 0.12);
             backdrop-filter: blur(12px);
@@ -143,24 +144,19 @@ def user_interface():
             box-shadow: 0 0 30px rgba(0,0,0,0.5);
             margin-top: 60px;
         }
-
         .title {
             font-size: 32px;
             font-weight: 700;
-            margin: 0;
         }
-
         .subtitle {
             margin-top: 10px;
             margin-bottom: 30px;
             font-size: 15px;
             color: #cfd8dc;
         }
-
         input[type="file"] {
             display: none;
         }
-
         .button {
             padding: 14px 34px;
             font-size: 16px;
@@ -170,7 +166,6 @@ def user_interface():
             color: white;
             cursor: pointer;
         }
-
         .result {
             margin-top: 25px;
             padding: 18px;
@@ -178,7 +173,6 @@ def user_interface():
             background: rgba(255,255,255,0.22);
             font-size: 17px;
             font-weight: bold;
-            line-height: 1.7;
         }
     </style>
 </head>
@@ -186,23 +180,17 @@ def user_interface():
 <body>
 <div class="overlay">
     <div class="card">
-        <h1 class="title">VoxGuard - Voice Authenticity Detector</h1>
-        <p class="subtitle">
-            Verify whether a voice is Human or AI-Generated
-        </p>
+        <h1 class="title">VoxGuard – Voice Authenticity Detector</h1>
+        <p class="subtitle">Verify whether a voice is Human or AI-Generated</p>
 
         <input type="file" id="audioInput" accept=".mp3,.wav">
-        <button class="button" onclick="openFile()">Detect Voice</button>
+        <button class="button" onclick="document.getElementById('audioInput').click()">Detect Voice</button>
 
         <div class="result" id="output"></div>
     </div>
 </div>
 
 <script>
-function openFile() {
-    document.getElementById("audioInput").click();
-}
-
 document.getElementById("audioInput").addEventListener("change", async function () {
     const file = this.files[0];
     const output = document.getElementById("output");
@@ -226,8 +214,8 @@ document.getElementById("audioInput").addEventListener("change", async function 
         if (response.ok) {
             output.innerHTML =
                 "Voice Type: " + data.classification +
-                "<br>Confidence Level: " + data.confidence +
-                "<br>Language Identified: " + data.detected_language;
+                "<br>Confidence: " + data.confidence +
+                "<br>Language: " + data.detected_language;
         } else {
             output.innerHTML = data.detail;
         }
@@ -240,9 +228,9 @@ document.getElementById("audioInput").addEventListener("change", async function 
 </html>
 """
 
-# =====================================
+# =========================
 # CORE API ENDPOINT
-# =====================================
+# =========================
 @app.post("/detect-voice")
 async def detect_voice(
     file: UploadFile = File(...),
@@ -252,7 +240,7 @@ async def detect_voice(
         raise HTTPException(status_code=401, detail="Access denied.")
 
     if not file.filename.lower().endswith((".mp3", ".wav")):
-        raise HTTPException(status_code=400, detail="Please upload an MP3 or WAV audio file.")
+        raise HTTPException(status_code=400, detail="Upload MP3 or WAV audio.")
 
     try:
         audio_bytes = await file.read()
@@ -284,5 +272,6 @@ async def detect_voice(
             "detected_language": language
         }
 
-    except Exception:
-        raise HTTPException(status_code=500, detail="We couldn’t process the audio file.")
+    except Exception as e:
+        print("Processing error:", e)
+        raise HTTPException(status_code=500, detail="Audio processing failed.")
