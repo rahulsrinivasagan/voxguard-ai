@@ -18,7 +18,8 @@ API_KEY = "my_secret_key_123"
 # =====================================
 # SPEECH MODEL SETUP
 # =====================================
-speech_model = whisper.load_model("base")
+whisper_model = whisper.load_model("tiny")
+
 
 LANGUAGE_LABELS = {
     "en": "English",
