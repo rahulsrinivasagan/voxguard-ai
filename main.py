@@ -241,7 +241,7 @@ document.getElementById("audioInput").addEventListener("change", async function 
                     ⚠️ <strong>Disclaimer:</strong><br>
                     Heuristic-based detection may classify advanced AI voices
                     (e.g., Google TTS, Azure, Amazon Polly) as <strong>Human</strong>.
-                    Results are indicative, not definitive.
+                    Results are indicative, not definitive. “Neural TTS systems may be classified as Human”
                 </div>
             `;
         }else {
