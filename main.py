@@ -147,6 +147,18 @@ def user_interface():
             box-shadow: 0 0 30px rgba(0,0,0,0.5);
             margin-top: 60px;
         }
+        .disclaimer {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(255, 0, 0, 0.15);
+            border: 1px solid rgba(255, 0, 0, 0.4);
+            color: #ffdada;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+
         .title {
             font-size: 32px;
             font-weight: 700;
@@ -189,7 +201,12 @@ def user_interface():
         <input type="file" id="audioInput" accept=".mp3,.wav">
         <button class="button" onclick="document.getElementById('audioInput').click()">Detect Voice</button>
 
-        <div class="result" id="output"></div>
+        <div class="result" id="output">
+            <div class="disclaimer">
+                ⚠️ <strong>Disclaimer:</strong><br>
+                This system uses heuristic-based acoustic analysis. Some AI-generated voices (e.g., Google TTS, Azure, Amazon Polly) are trained on real human speech and may closely resemble natural voices, resulting in a <strong>Human</strong> classification. Results are indicative, not definitive.
+            </div>
+        </div>
     </div>
 </div>
 
@@ -215,14 +232,22 @@ document.getElementById("audioInput").addEventListener("change", async function 
         const data = await response.json();
 
         if (response.ok) {
-            output.innerHTML =
-                "Voice Type: " + data.classification +
-                "<br>Confidence: " + data.confidence +
-                "<br>Language: " + data.detected_language;
-        } else {
+            output.innerHTML = `
+                <strong>Voice Type:</strong> ${data.classification}<br>
+                <strong>Confidence:</strong> ${data.confidence}<br>
+                <strong>Detected Language:</strong> ${data.detected_language}
+
+                <div class="disclaimer">
+                    ⚠️ <strong>Disclaimer:</strong><br>
+                    Heuristic-based detection may classify advanced AI voices
+                    (e.g., Google TTS, Azure, Amazon Polly) as <strong>Human</strong>.
+                    Results are indicative, not definitive.
+                </div>
+            `;
+        }else {
             output.innerHTML = data.detail;
         }
-    } catch {
+    } catch (error) {
         output.innerHTML = "Unable to reach the server.";
     }
 });
